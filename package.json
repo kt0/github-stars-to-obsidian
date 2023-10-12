@@ -1,0 +1,9 @@
+{
+  "name": "github-stars-to-obsidian",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@octokit/rest": "^20.0.2"
+  }
+}

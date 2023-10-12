@@ -1,0 +1,6 @@
+out
+cache
+stars.json
+node_modules
+yarn.lock
+.env
