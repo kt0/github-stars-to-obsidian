@@ -1,4 +1,5 @@
-const {Octokit} = require('@octokit/rest')
+const { Octokit } = require('@octokit/rest')
+const yaml = require('js-yaml')
 const fs = require('fs')
 
 const fresh = false
@@ -18,15 +19,14 @@ async function writeStars() {
   const per_page = 100
   while (true) {
     console.log(`Loading page ${page}`)
-    const list = await client.rest.activity.listReposStarredByAuthenticatedUser({ per_page, page })
-    const shit = list.data[0]
-    result = result.concat(list.data)
+    const list = await client.rest.activity.listReposStarredByAuthenticatedUser({ per_page, page, headers: { accept: 'application/vnd.github.star+json' } })
+    result = result.concat(list.data.map(({ starred_at, repo }) => ({ ...repo, starred_at })))
 
     if (list.data.length < per_page) {
       break
     }
 
-    page ++
+    page++
   }
   fs.writeFileSync(starsFile, JSON.stringify(result), 'utf-8');
   return result
@@ -58,30 +58,26 @@ async function loadStars() {
  */
 
 async function loadReadme(repo) {
-  const file = `${cacheDir}/${repo.name}.json`
+  const file = `${cacheDir}/${repo.name}.md`
   /** @type {import('@octokit/openapi-types/types').components['schemas']['content-file']} */
   let content
   if (!fresh && fs.existsSync(file)) {
     try {
-      content = JSON.parse(fs.readFileSync(file, 'utf-8'))
-    } catch {}
+      content = fs.readFileSync(file, 'utf-8')
+    } catch { }
   }
   if (!content) {
     try {
-      const readme = await client.rest.repos.getReadme({ repo: repo.name, owner: repo.owner.login })
+      const readme = await client.rest.repos.getReadme({ repo: repo.name, owner: repo.owner.login, headers: { accept: 'application/vnd.github.raw+json' } })
       content = readme.data
-      fs.writeFileSync(file, JSON.stringify(content), 'utf-8')
+      fs.writeFileSync(file, content, 'utf-8')
     } catch (e) {
-      content = { content: '' }
-      fs.writeFileSync(file, JSON.stringify({content: ''}), 'utf-8')
+      content = '*empty*'
+      fs.writeFileSync(file, content, 'utf-8')
     }
   }
-  
-  let result = content.content
-  if (content.encoding === 'base64') {
-    result = atob(result)
-  }
-  return result
+
+  return content
 }
 
 /**
@@ -90,27 +86,25 @@ async function loadReadme(repo) {
  * @returns string
  */
 function setHeaders(repo) {
-  return `---
-tags:
-  - github
-id: ${repo.id}
-name: ${repo.name}
-archived: ${repo.archived}
-full_name: ${repo.full_name}
-description: ${repo.description}
-language: ${repo.language}
-html_url: ${repo.html_url}
-homepage: ${repo.homepage}
-watchers_count: ${repo.watchers_count}
-forks_count: ${repo.forks_count}
-stargazers_count: ${repo.stargazers_count}
-created_at: ${repo.created_at}
-updated_at: ${repo.updated_at}
-pushed_at: ${repo.pushed_at}
-license_key: ${repo.license?.key}
-license_name: ${repo.license?.name}
-topics: ${repo.topics.length > 0 ? "\n" + repo.topics.map(t => `  - ${t}`).join('\n') : '[]'}
----`
+  const { starred_at, created_at, updated_at, pushed_at, id, name, description, archived, full_name, language, html_url, homepage, watchers_count, stargazers_count, forks_count } = repo
+  return '---\n' + yaml.dump({
+    tags: ['github'],
+    id,
+    starred_at,
+    name,
+    homepage,
+    description,
+    archived,
+    full_name,
+    language,
+    html_url,
+    watchers_count,
+    forks_count,
+    stargazers_count,
+    created_at,
+    license: [repo.license?.key, repo.license?.name].filter(Boolean),
+    topics: repo.topics,
+  }) + '\n---\n'
 }
 
 /**
